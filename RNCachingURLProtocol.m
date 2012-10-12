@@ -85,17 +85,10 @@ static NSMutableDictionary *_cacheDictionary = nil;
 + (NSMutableDictionary *)expireTime {
     if (_expireTime == nil) {
         _expireTime = [NSMutableDictionary dictionary];
-#ifdef DEBUG
-        [_expireTime setObject:@(60) forKey:@"application/json"];
-        [_expireTime setObject:@(60) forKey:@"text/html"];
-        [_expireTime setObject:@(60) forKey:@"image/jpeg"];
-        [_expireTime setObject:@(60) forKey:@"image/png"];
-#else
         [_expireTime setObject:@(60 * 30) forKey:@"application/json"]; // 30 min
         [_expireTime setObject:@(60 * 30) forKey:@"text/html"]; // 30 min
-        [_expireTime setObject:@(60 * 60 * 24 * 2) forKey:@"image/jpeg"]; // 48 hour
-        [_expireTime setObject:@(60 * 60 * 24 * 2) forKey:@"image/png"]; // 48 hour
-#endif
+        [_expireTime setObject:@(60 * 60 * 24 * 30) forKey:@"image/jpeg"}; // 30 day
+        [_expireTime setObject:@(60 * 60 * 24 * 30) forKey:@"image/png"]; // 30 day
     }
     return _expireTime;
 }
@@ -128,7 +121,7 @@ static NSMutableDictionary *_cacheDictionary = nil;
     _cacheDictionary = nil;
 }
 
-+ (void)removeCacheOderThan:(NSDate *)date {
++ (void)removeCacheOlderThan:(NSDate *)date {
     NSSet *keysToDelete = [[self cacheDictionary] keysOfEntriesPassingTest:^BOOL(id key, id obj, BOOL *stop) {
         NSDate *d = [(NSArray *)obj objectAtIndex:0];
         return d < date;
