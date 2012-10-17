@@ -124,7 +124,7 @@ static NSMutableDictionary *_cacheDictionary = nil;
 + (void)removeCacheOlderThan:(NSDate *)date {
     NSSet *keysToDelete = [[self cacheDictionary] keysOfEntriesPassingTest:^BOOL(id key, id obj, BOOL *stop) {
         NSDate *d = [(NSArray *)obj objectAtIndex:0];
-        return d < date;
+        return [d compare:date] == NSOrderedAscending;
     }];
     [[self cacheDictionary] removeObjectsForKeys:[keysToDelete allObjects]];
     [self saveCacheDictionary];
