@@ -72,9 +72,9 @@ static NSMutableDictionary *_cacheDictionary = nil;
 + (NSMutableDictionary *)cacheDictionary {
     if (_cacheDictionary == nil) {
         NSDictionary* dict = [NSDictionary dictionaryWithContentsOfFile:[self cachePathForKey:RNCachingPlistFile]];
-
+        
         if (dict) {
-            _cacheDictionary = [dict mutableCopy];
+            _cacheDictionary = [[NSMutableDictionary alloc] initWithDictionary:dict];
         } else {
             _cacheDictionary = [[NSMutableDictionary alloc] init];
         }
@@ -88,6 +88,7 @@ static NSMutableDictionary *_cacheDictionary = nil;
         [_expireTime setObject:@(60 * 30) forKey:@"application/json"]; // 30 min
         [_expireTime setObject:@(60 * 30) forKey:@"text/html"]; // 30 min
         [_expireTime setObject:@(60 * 60 * 24 * 30) forKey:@"image/jpeg"]; // 30 day
+        [_expireTime setObject:@(60 * 60 * 24 * 30) forKey:@"image/jpg"]; // 30 day
         [_expireTime setObject:@(60 * 60 * 24 * 30) forKey:@"image/png"]; // 30 day
     }
     return _expireTime;
@@ -97,14 +98,14 @@ static NSMutableDictionary *_cacheDictionary = nil;
     if (_excludeHosts == nil) {
         _excludeHosts = [NSMutableArray array];
     }
-
+    
     return _excludeHosts;
 }
 
 + (BOOL)canInitWithRequest:(NSURLRequest *)request {
     // only handle http requests we haven't marked with our header.
     if ([[[request URL] scheme] isEqualToString:@"http"] &&
-            ([request valueForHTTPHeaderField:RNCachingURLHeader] == nil)) {
+        ([request valueForHTTPHeaderField:RNCachingURLHeader] == nil)) {
         return YES;
     }
     return NO;
@@ -115,39 +116,49 @@ static NSMutableDictionary *_cacheDictionary = nil;
 }
 
 + (void)removeCache {
-    NSString *cachesPath = [NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES) lastObject];
-    NSString *offlineCachePath = [cachesPath stringByAppendingPathComponent:@"RNCaching"];
-    [[NSFileManager defaultManager] removeItemAtPath:offlineCachePath error:nil];
-    _cacheDictionary = nil;
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSString *cachesPath = [NSSearchPathForDirectoriesInDomains(NSCachesDirectory, NSUserDomainMask, YES) lastObject];
+        NSString *offlineCachePath = [cachesPath stringByAppendingPathComponent:@"RNCaching"];
+        [[NSFileManager defaultManager] removeItemAtPath:offlineCachePath error:nil];
+        _cacheDictionary = nil;
+    });
 }
 
 + (void)removeCacheOlderThan:(NSDate *)date {
-    NSSet *keysToDelete = [[self cacheDictionary] keysOfEntriesPassingTest:^BOOL(id key, id obj, BOOL *stop) {
-        NSDate *d = [(NSArray *)obj objectAtIndex:0];
-        return [d compare:date] == NSOrderedAscending;
-    }];
-    [[self cacheDictionary] removeObjectsForKeys:[keysToDelete allObjects]];
-    [self saveCacheDictionary];
-    for (NSString *key in keysToDelete) {
-        [[NSFileManager defaultManager] removeItemAtPath:key error:nil];
-    }
+    dispatch_async(dispatch_get_main_queue(), ^{
+        NSSet *keysToDelete = [[self cacheDictionary] keysOfEntriesPassingTest:^BOOL(id key, id obj, BOOL *stop) {
+            NSDate *d = [(NSArray *)obj objectAtIndex:0];
+            return [d compare:date] == NSOrderedAscending;
+        }];
+        [[self cacheDictionary] removeObjectsForKeys:[keysToDelete allObjects]];
+        [self saveCacheDictionary];
+        for (NSString *key in keysToDelete) {
+            [[NSFileManager defaultManager] removeItemAtPath:key error:nil];
+        }
+    });
 }
 
 + (void)saveCacheDictionary {
     static dispatch_queue_t queue;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        queue = dispatch_queue_create("com.mm.iweekly.cacheQueue", NULL);
+        queue = dispatch_queue_create("cache.savelist.queue", NULL);
     });
-    NSDictionary *dict = [_cacheDictionary copy];
+    __block NSDictionary *dict = nil;
+    dispatch_sync(dispatch_get_main_queue(), ^{
+        dict = [[self cacheDictionary] copy];
+    });
     dispatch_async(queue, ^{
-        [dict writeToFile:[self cachePathForKey:RNCachingPlistFile] atomically:YES];
+        NSString *path = [NSString stringWithString:[self cachePathForKey:RNCachingPlistFile]];
+        [dict writeToFile:path atomically:YES];
     });
 }
 
 - (void)saveAfterDelay {
-    [NSObject cancelPreviousPerformRequestsWithTarget:[self class] selector:@selector(saveCacheDictionary) object:nil];
-    [[self class] performSelector:@selector(saveCacheDictionary) withObject:nil afterDelay:0.3];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [NSObject cancelPreviousPerformRequestsWithTarget:[self class] selector:@selector(saveCacheDictionary) object:nil];
+        [[self class] performSelector:@selector(saveCacheDictionary) withObject:nil afterDelay:0.3];
+    });
 }
 
 + (NSString *)cachePathForKey:(NSString *)key {
@@ -165,9 +176,9 @@ static NSMutableDictionary *_cacheDictionary = nil;
     if (![self useCache]) {
         NSMutableURLRequest *connectionRequest =
 #if WORKAROUND_MUTABLE_COPY_LEAK
-                [[self request] mutableCopyWorkaround];
+        [[self request] mutableCopyWorkaround];
 #else
-      [[self request] mutableCopy];
+        [[self request] mutableCopy];
 #endif
         // we need to mark this request with our header so we know not to handle it in +[NSURLProtocol canInitWithRequest:].
         [connectionRequest setValue:@"" forHTTPHeaderField:RNCachingURLHeader];
@@ -184,7 +195,7 @@ static NSMutableDictionary *_cacheDictionary = nil;
             if (redirectRequest) {
                 [[self client] URLProtocol:self wasRedirectedToRequest:redirectRequest redirectResponse:response];
             } else {
-
+                
                 [[self client] URLProtocol:self didReceiveResponse:response cacheStoragePolicy:NSURLCacheStorageNotAllowed]; // we handle caching ourselves.
                 [[self client] URLProtocol:self didLoadData:data];
                 [[self client] URLProtocolDidFinishLoading:self];
@@ -203,13 +214,13 @@ static NSMutableDictionary *_cacheDictionary = nil;
 // NSURLConnection delegates (generally we pass these on to our client)
 
 - (NSURLRequest *)connection:(NSURLConnection *)connection willSendRequest:(NSURLRequest *)request redirectResponse:(NSURLResponse *)response {
-// Thanks to Nick Dowell https://gist.github.com/1885821
+    // Thanks to Nick Dowell https://gist.github.com/1885821
     if (response != nil) {
         NSMutableURLRequest *redirectableRequest =
 #if WORKAROUND_MUTABLE_COPY_LEAK
-                [request mutableCopyWorkaround];
+        [request mutableCopyWorkaround];
 #else
-      [request mutableCopy];
+        [request mutableCopy];
 #endif
         // We need to remove our header so we know to handle this request and cache it.
         // There are 3 requests in flight: the outside request, which we handled, the internal request,
@@ -217,7 +228,7 @@ static NSMutableDictionary *_cacheDictionary = nil;
         // The redirectable request will cause a new outside request from the NSURLProtocolClient, which
         // must not be marked with our header.
         [redirectableRequest setValue:nil forHTTPHeaderField:RNCachingURLHeader];
-
+        
         NSString *cachePath = [self cachePathForRequest:[self request]];
         RNCachedData *cache = [RNCachedData new];
         [cache setResponse:response];
@@ -249,28 +260,31 @@ static NSMutableDictionary *_cacheDictionary = nil;
 }
 
 - (void)connectionDidFinishLoading:(NSURLConnection *)connection {
-    [[self client] URLProtocolDidFinishLoading:self];
-
-    NSString *cachePath = [self cachePathForRequest:[self request]];
-    RNCachedData *cache = [RNCachedData new];
-    [cache setResponse:[self response]];
-    [cache setData:[self data]];
-    [[[self class] cacheDictionary] setObject:@[[NSDate date], [self response].MIMEType] forKey:cachePath];
-    [self performSelectorOnMainThread:@selector(saveAfterDelay) withObject:nil waitUntilDone:YES];
-
-    [NSKeyedArchiver archiveRootObject:cache toFile:cachePath];
-
-    [self setConnection:nil];
-    [self setData:nil];
-    [self setResponse:nil];
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [[self client] URLProtocolDidFinishLoading:self];
+        
+        NSString *cachePath = [self cachePathForRequest:[self request]];
+        RNCachedData *cache = [RNCachedData new];
+        [cache setResponse:[self response]];
+        [cache setData:[self data]];
+        [[[self class] cacheDictionary] setObject:@[[NSDate date], [self response].MIMEType] forKey:cachePath];
+        [self performSelectorOnMainThread:@selector(saveAfterDelay) withObject:nil waitUntilDone:YES];
+        
+        [NSKeyedArchiver archiveRootObject:cache toFile:cachePath];
+        
+        [self setConnection:nil];
+        [self setData:nil];
+        [self setResponse:nil];
+    });
 }
 
 - (BOOL)useCache {
+    if ([self isHostExcluded] || ![[[self request] HTTPMethod] isEqualToString:@"GET"]){
+        return NO;
+    }
     BOOL reachable = (BOOL) [[Reachability reachabilityWithHostName:[[[self request] URL] host]] currentReachabilityStatus] != NotReachable;
     if (!reachable) {
         return YES;
-    } else if ([self isHostExcluded]){
-        return NO;
     } else {
         return ![self isCacheExpired];
     }
@@ -278,7 +292,7 @@ static NSMutableDictionary *_cacheDictionary = nil;
 
 - (BOOL)isHostExcluded {
     NSString *string = [[[self request] URL] absoluteString];
-
+    
     NSError  *error  = NULL;
     for (NSString *pattern in _excludeHosts) {
         NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:pattern options:NSRegularExpressionCaseInsensitive error:&error];
@@ -288,12 +302,16 @@ static NSMutableDictionary *_cacheDictionary = nil;
             return YES;
         }
     }
-
+    
     return NO;
 }
 
 - (NSArray *)cacheMeta {
-    return [[[self class] cacheDictionary] objectForKey:[self cachePathForRequest:[self request]]];
+    __block NSArray *array = nil;
+    dispatch_sync(dispatch_get_main_queue(), ^{
+        array = [[[self class] cacheDictionary] objectForKey:[self cachePathForRequest:[self request]]];
+    });
+    return array;
 }
 
 - (BOOL)isCacheExpired {
@@ -301,19 +319,19 @@ static NSMutableDictionary *_cacheDictionary = nil;
     if (meta == nil) {
         return YES;
     }
-
+    
     NSDate *modifiedDate = [meta objectAtIndex:0];
     NSString *mimeType = [meta objectAtIndex:1];
-
+    
     BOOL expired = YES;
-
+    
     NSNumber *time = [[RNCachingURLProtocol expireTime] valueForKey:mimeType];
     if (time) {
         NSTimeInterval delta = [[NSDate date] timeIntervalSinceDate:modifiedDate];
-
+        
         expired = (delta > [time intValue]);
     }
-
+    
     NSLog(@"------- cache %@: %@", expired ? @"expired" : @"hit", [[[self request] URL] absoluteString]);
     return expired;
 }
@@ -360,7 +378,7 @@ static NSString *const kLastModifiedDateKey = @"lastModifiedDateKey";
         [self setResponse:[aDecoder decodeObjectForKey:kResponseKey]];
         [self setRedirectRequest:[aDecoder decodeObjectForKey:kRedirectRequestKey]];
     }
-
+    
     return self;
 }
 
@@ -374,7 +392,11 @@ static NSString *const kLastModifiedDateKey = @"lastModifiedDateKey";
     NSMutableURLRequest *mutableURLRequest = [[NSMutableURLRequest alloc] initWithURL:[self URL]
                                                                           cachePolicy:[self cachePolicy]
                                                                       timeoutInterval:[self timeoutInterval]];
+    [mutableURLRequest setHTTPMethod:[self HTTPMethod]];
     [mutableURLRequest setAllHTTPHeaderFields:[self allHTTPHeaderFields]];
+    [mutableURLRequest setHTTPBody:[self HTTPBody]];
+    [mutableURLRequest setHTTPShouldHandleCookies:[self HTTPShouldHandleCookies]];
+    [mutableURLRequest setHTTPShouldUsePipelining:[self HTTPShouldUsePipelining]];
     return mutableURLRequest;
 }
 
