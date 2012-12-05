@@ -28,18 +28,12 @@
 #import "RNCachingURLProtocol.h"
 #import "Reachability.h"
 
-#define WORKAROUND_MUTABLE_COPY_LEAK 1
-
-#if WORKAROUND_MUTABLE_COPY_LEAK
-
-// required to workaround http://openradar.appspot.com/11596316
 @interface NSURLRequest (MutableCopyWorkaround)
 
 - (id)mutableCopyWorkaround;
 
 @end
 
-#endif
 
 @interface RNCachedData : NSObject <NSCoding>
 @property(nonatomic, readwrite, strong) NSData *data;
@@ -71,7 +65,7 @@ static NSMutableDictionary *_cacheDictionary = nil;
 
 + (NSMutableDictionary *)cacheDictionary {
     if (_cacheDictionary == nil) {
-        NSDictionary* dict = [NSDictionary dictionaryWithContentsOfFile:[self cachePathForKey:RNCachingPlistFile]];
+        NSDictionary *dict = [NSDictionary dictionaryWithContentsOfFile:[self cachePathForKey:RNCachingPlistFile]];
 
         if (dict) {
             _cacheDictionary = [dict mutableCopy];
@@ -124,7 +118,7 @@ static NSMutableDictionary *_cacheDictionary = nil;
 
 + (void)removeCacheOlderThan:(NSDate *)date {
     NSSet *keysToDelete = [[self cacheDictionary] keysOfEntriesPassingTest:^BOOL(id key, id obj, BOOL *stop) {
-        NSDate *d = [(NSArray *)obj objectAtIndex:0];
+        NSDate *d = [(NSArray *) obj objectAtIndex:0];
         return [d compare:date] == NSOrderedAscending;
     }];
     [[self cacheDictionary] removeObjectsForKeys:[keysToDelete allObjects]];
@@ -164,12 +158,7 @@ static NSMutableDictionary *_cacheDictionary = nil;
 
 - (void)startLoading {
     if (![self useCache]) {
-        NSMutableURLRequest *connectionRequest =
-#if WORKAROUND_MUTABLE_COPY_LEAK
-                [[self request] mutableCopyWorkaround];
-#else
-      [[self request] mutableCopy];
-#endif
+        NSMutableURLRequest *connectionRequest = [[self request] mutableCopyWorkaround];
         // we need to mark this request with our header so we know not to handle it in +[NSURLProtocol canInitWithRequest:].
         [connectionRequest setValue:@"" forHTTPHeaderField:RNCachingURLHeader];
         NSURLConnection *connection = [NSURLConnection connectionWithRequest:connectionRequest
@@ -177,23 +166,31 @@ static NSMutableDictionary *_cacheDictionary = nil;
         [self setConnection:connection];
     }
     else {
-        RNCachedData *cache = [NSKeyedUnarchiver unarchiveObjectWithFile:[self cachePathForRequest:[self request]]];
-        if (cache) {
-            NSData *data = [cache data];
-            NSURLResponse *response = [cache response];
-            NSURLRequest *redirectRequest = [cache redirectRequest];
-            if (redirectRequest) {
-                [[self client] URLProtocol:self wasRedirectedToRequest:redirectRequest redirectResponse:response];
-            } else {
+        NSError *error = [NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorCannotConnectToHost userInfo:nil];
+        [self sendCache:error];
+    }
+}
 
-                [[self client] URLProtocol:self didReceiveResponse:response cacheStoragePolicy:NSURLCacheStorageNotAllowed]; // we handle caching ourselves.
-                [[self client] URLProtocol:self didLoadData:data];
-                [[self client] URLProtocolDidFinishLoading:self];
-            }
+- (void)sendCache:(NSError *)error {
+    RNCachedData *cache = [NSKeyedUnarchiver unarchiveObjectWithFile:[self cachePathForRequest:[self request]]];
+    if (cache) {
+        NSData *data = [cache data];
+        NSURLResponse *response = [cache response];
+        NSURLRequest *redirectRequest = [cache redirectRequest];
+        if (redirectRequest) {
+            [[self client] URLProtocol:self wasRedirectedToRequest:redirectRequest redirectResponse:response];
+        } else {
+
+            [[self client] URLProtocol:self didReceiveResponse:response cacheStoragePolicy:NSURLCacheStorageNotAllowed]; // we handle caching ourselves.
+            [[self client] URLProtocol:self didLoadData:data];
+            [[self client] URLProtocolDidFinishLoading:self];
         }
-        else {
-            [[self client] URLProtocol:self didFailWithError:[NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorCannotConnectToHost userInfo:nil]];
-        }
+    } else {
+        [[self client] URLProtocol:self didFailWithError:error];
+        [self setConnection:nil];
+        [self setData:nil];
+        [self setResponse:nil];
+
     }
 }
 
@@ -206,12 +203,7 @@ static NSMutableDictionary *_cacheDictionary = nil;
 - (NSURLRequest *)connection:(NSURLConnection *)connection willSendRequest:(NSURLRequest *)request redirectResponse:(NSURLResponse *)response {
 // Thanks to Nick Dowell https://gist.github.com/1885821
     if (response != nil) {
-        NSMutableURLRequest *redirectableRequest =
-#if WORKAROUND_MUTABLE_COPY_LEAK
-                [request mutableCopyWorkaround];
-#else
-      [request mutableCopy];
-#endif
+        NSMutableURLRequest *redirectableRequest = [request mutableCopyWorkaround];
         // We need to remove our header so we know to handle this request and cache it.
         // There are 3 requests in flight: the outside request, which we handled, the internal request,
         // which we marked with our header, and the redirectableRequest, which we're modifying here.
@@ -238,10 +230,7 @@ static NSMutableDictionary *_cacheDictionary = nil;
 }
 
 - (void)connection:(NSURLConnection *)connection didFailWithError:(NSError *)error {
-    [[self client] URLProtocol:self didFailWithError:error];
-    [self setConnection:nil];
-    [self setData:nil];
-    [self setResponse:nil];
+    [self sendCache:error];
 }
 
 - (void)connection:(NSURLConnection *)connection didReceiveResponse:(NSURLResponse *)response {
@@ -267,7 +256,7 @@ static NSMutableDictionary *_cacheDictionary = nil;
 }
 
 - (BOOL)useCache {
-    if ([self isHostExcluded] || ![[[self request] HTTPMethod] isEqualToString:@"GET"]){
+    if ([self isHostExcluded] || ![[[self request] HTTPMethod] isEqualToString:@"GET"]) {
         return NO;
     }
     BOOL reachable = (BOOL) [[Reachability reachabilityWithHostName:[[[self request] URL] host]] currentReachabilityStatus] != NotReachable;
@@ -281,7 +270,7 @@ static NSMutableDictionary *_cacheDictionary = nil;
 - (BOOL)isHostExcluded {
     NSString *string = [[[self request] URL] absoluteString];
 
-    NSError  *error  = NULL;
+    NSError *error = NULL;
     for (NSString *pattern in _excludeHosts) {
         NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:pattern options:NSRegularExpressionCaseInsensitive error:&error];
         NSTextCheckingResult *result = [regex firstMatchInString:string options:NSMatchingAnchored range:NSMakeRange(0, string.length)];
@@ -368,7 +357,6 @@ static NSString *const kLastModifiedDateKey = @"lastModifiedDateKey";
 
 @end
 
-#if WORKAROUND_MUTABLE_COPY_LEAK
 
 @implementation NSURLRequest (MutableCopyWorkaround)
 
@@ -385,5 +373,3 @@ static NSString *const kLastModifiedDateKey = @"lastModifiedDateKey";
 }
 
 @end
-
-#endif
