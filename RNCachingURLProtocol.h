@@ -64,7 +64,7 @@
 
 + (NSMutableDictionary *)expireTime;
 
-+ (NSMutableArray *)excludeHostPatterns;
++ (NSMutableArray *)whiteListURLs;
 
 + (void)removeCache;
 

@@ -55,7 +55,7 @@ static NSString *RNCachingPlistFile = @"RNCache.plist";
 @end
 
 static NSMutableDictionary *_expireTime = nil;
-static NSMutableArray *_excludeHosts = nil;
+static NSMutableArray *_whiteListURLs = nil;
 static NSMutableDictionary *_cacheDictionary = nil;
 
 @implementation RNCachingURLProtocol
@@ -90,12 +90,12 @@ static NSMutableDictionary *_cacheDictionary = nil;
     return _expireTime;
 }
 
-+ (NSMutableArray *)excludeHostPatterns {
-    if (_excludeHosts == nil) {
-        _excludeHosts = [NSMutableArray array];
++ (NSMutableArray *)whiteListURLs {
+    if (_whiteListURLs == nil) {
+        _whiteListURLs = [NSMutableArray array];
     }
 
-    return _excludeHosts;
+    return _whiteListURLs;
 }
 
 + (BOOL)canInitWithRequest:(NSURLRequest *)request {
@@ -258,7 +258,7 @@ static NSMutableDictionary *_cacheDictionary = nil;
 }
 
 - (BOOL)useCache {
-    if ([self isHostExcluded] || ![[[self request] HTTPMethod] isEqualToString:@"GET"]) {
+    if (![self isWhiteListed] || ![[[self request] HTTPMethod] isEqualToString:@"GET"]) {
         return NO;
     }
     BOOL reachable = (BOOL) [[Reachability reachabilityWithHostName:[[[self request] URL] host]] currentReachabilityStatus] != NotReachable;
@@ -269,20 +269,21 @@ static NSMutableDictionary *_cacheDictionary = nil;
     }
 }
 
-- (BOOL)isHostExcluded {
+- (BOOL)isWhiteListed {
     NSString *string = [[[self request] URL] absoluteString];
 
     NSError *error = NULL;
-    for (NSString *pattern in _excludeHosts) {
+    BOOL found = NO;
+    for (NSString *pattern in _whiteListURLs) {
         NSRegularExpression *regex = [NSRegularExpression regularExpressionWithPattern:pattern options:NSRegularExpressionCaseInsensitive error:&error];
         NSTextCheckingResult *result = [regex firstMatchInString:string options:NSMatchingAnchored range:NSMakeRange(0, string.length)];
         if (result.numberOfRanges) {
-            NSLog(@"%@ excluded", string);
             return YES;
         }
     }
 
-    return NO;
+    NSLog(@"------- cache '%@' not whitelisted, fetching", string);
+    return found;
 }
 
 - (NSArray *)cacheMeta {
