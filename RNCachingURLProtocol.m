@@ -282,7 +282,9 @@ static NSMutableDictionary *_cacheDictionary = nil;
         }
     }
 
+#if !(defined RNCACHING_DISABLE_LOGGING)
     NSLog(@"------- cache '%@' not whitelisted, fetching", string);
+#endif
     return found;
 }
 
@@ -308,7 +310,9 @@ static NSMutableDictionary *_cacheDictionary = nil;
         expired = (delta > [time intValue]);
     }
 
+#if !(defined RNCACHING_DISABLE_LOGGING)
     NSLog(@"------- cache %@: %@", expired ? @"expired" : @"hit", [[[self request] URL] absoluteString]);
+#endif
     return expired;
 }
 
