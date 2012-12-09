@@ -261,7 +261,7 @@ static NSMutableDictionary *_cacheDictionary = nil;
     if (![self isWhiteListed] || ![[[self request] HTTPMethod] isEqualToString:@"GET"]) {
         return NO;
     }
-    BOOL reachable = (BOOL) [[Reachability reachabilityWithHostName:[[[self request] URL] host]] currentReachabilityStatus] != NotReachable;
+    BOOL reachable = (BOOL) [[Reachability reachabilityWithHostname:[[[self request] URL] host]] currentReachabilityStatus] != NotReachable;
     if (!reachable) {
         return YES;
     } else {
