@@ -222,6 +222,7 @@ static NSMutableDictionary *_cacheDictionary = nil;
         [[self client] URLProtocol:self wasRedirectedToRequest:redirectableRequest redirectResponse:response];
         return redirectableRequest;
     } else {
+        self.networkActivityIndicatorVisible = YES;
         return request;
     }
 }
@@ -232,6 +233,7 @@ static NSMutableDictionary *_cacheDictionary = nil;
 }
 
 - (void)connection:(NSURLConnection *)connection didFailWithError:(NSError *)error {
+    self.networkActivityIndicatorVisible = NO;
     [self sendCache:error];
 }
 
@@ -255,6 +257,26 @@ static NSMutableDictionary *_cacheDictionary = nil;
     [self setConnection:nil];
     [self setData:nil];
     [self setResponse:nil];
+
+    self.networkActivityIndicatorVisible = NO;
+}
+
+- (void)setNetworkActivityIndicatorVisible:(BOOL)visible {
+    static NSInteger calls = 0;
+    if (visible) {
+        calls++;
+    } else {
+        calls--;
+    }
+    DLog(@"Indicator counter: %d", calls)
+
+    // The assertion helps to find programmer errors in activity indicator management.
+    // Since a negative NumberOfCallsToSetVisible is not a fatal error,
+    // it should probably be removed from production code.
+    if (calls < 0) DLog(@"Network Activity Indicator was asked to hide more often than shown");
+
+    // Display the indicator as long as our static counter is > 0.
+    [UIApplication sharedApplication].networkActivityIndicatorVisible = (calls > 0);
 }
 
 - (BOOL)useCache {
