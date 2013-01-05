@@ -68,7 +68,15 @@
 
 + (void)removeCache;
 
++ (NSData *)dataForURL:(NSString *)url;
+
 - (NSString *)cachePathForRequest:(NSURLRequest *)aRequest;
-- (BOOL) useCache;
+
+- (BOOL)useCache;
+
++ (void)removeCacheOlderThan:(NSDate *)date;
+
++ (NSString *)cachePathForKey:(NSString *)key;
+
 
 @end
