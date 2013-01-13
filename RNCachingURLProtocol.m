@@ -91,9 +91,11 @@ static RNCacheListStore *_cacheListStore = nil;
         [_expireTime setObject:@(60 * 30) forKey:@"application/javascript"]; // 30 min
         [_expireTime setObject:@(60 * 30) forKey:@"text/html"]; // 30 min
         [_expireTime setObject:@(60 * 30) forKey:@"text/css"]; // 30 min
+        [_expireTime setObject:@(60 * 30) forKey:@"text/plain"]; // 30 min, sometimes the css/js will be treated like text/plain
         [_expireTime setObject:@(60 * 60 * 24 * 30) forKey:@"image/jpeg"]; // 30 day
         [_expireTime setObject:@(60 * 60 * 24 * 30) forKey:@"image/jpg"]; // 30 day
         [_expireTime setObject:@(60 * 60 * 24 * 30) forKey:@"image/png"]; // 30 day
+        [_expireTime setObject:@(60 * 60 * 24 * 30) forKey:@"image/gif"]; // 30 day
     }
     return _expireTime;
 }
