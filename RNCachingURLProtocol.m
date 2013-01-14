@@ -158,6 +158,9 @@ static RNCacheListStore *_cacheListStore = nil;
 
 - (void)startLoading {
     if (![self useCache]) {
+#if !(defined RNCACHING_DISABLE_LOGGING)
+    NSLog(@"[RNCachingURLProtocol] fetching '%@'", [[[self request] URL] absoluteString]);
+#endif
         NSMutableURLRequest *connectionRequest = [[self request] mutableCopyWorkaround];
         // we need to mark this request with our header so we know not to handle it in +[NSURLProtocol canInitWithRequest:].
         [connectionRequest setValue:@"" forHTTPHeaderField:RNCachingURLHeader];
@@ -279,9 +282,6 @@ static RNCacheListStore *_cacheListStore = nil;
         }
     }
 
-#if !(defined RNCACHING_DISABLE_LOGGING)
-    NSLog(@"[RNCachingURLProtocol] '%@' not whitelisted, fetching", string);
-#endif
     return found;
 }
 
