@@ -157,18 +157,7 @@ static RNCacheListStore *_cacheListStore = nil;
 }
 
 - (void)startLoading {
-    if (![self useCache]) {
-#if !(defined RNCACHING_DISABLE_LOGGING)
-    NSLog(@"[RNCachingURLProtocol] fetching '%@'", [[[self request] URL] absoluteString]);
-#endif
-        NSMutableURLRequest *connectionRequest = [[self request] mutableCopyWorkaround];
-        // we need to mark this request with our header so we know not to handle it in +[NSURLProtocol canInitWithRequest:].
-        [connectionRequest setValue:@"" forHTTPHeaderField:RNCachingURLHeader];
-        NSURLConnection *connection = [NSURLConnection connectionWithRequest:connectionRequest
-                                                                    delegate:self];
-        [self setConnection:connection];
-    }
-    else {
+    if ([self useCache]) {
         RNCachedData *cache = [NSKeyedUnarchiver unarchiveObjectWithFile:[self cachePathForRequest:[self request]]];
         if (cache) {
             NSData *data = [cache data];
@@ -177,16 +166,23 @@ static RNCacheListStore *_cacheListStore = nil;
             if (redirectRequest) {
                 [[self client] URLProtocol:self wasRedirectedToRequest:redirectRequest redirectResponse:response];
             } else {
-
                 [[self client] URLProtocol:self didReceiveResponse:response cacheStoragePolicy:NSURLCacheStorageNotAllowed]; // we handle caching ourselves.
                 [[self client] URLProtocol:self didLoadData:data];
                 [[self client] URLProtocolDidFinishLoading:self];
             }
-        }
-        else {
-            [[self client] URLProtocol:self didFailWithError:[NSError errorWithDomain:NSURLErrorDomain code:NSURLErrorCannotConnectToHost userInfo:nil]];
+            return;
         }
     }
+
+#if !(defined RNCACHING_DISABLE_LOGGING)
+    NSLog(@"[RNCachingURLProtocol] fetching '%@'", [[[self request] URL] absoluteString]);
+#endif
+    NSMutableURLRequest *connectionRequest = [[self request] mutableCopyWorkaround];
+    // we need to mark this request with our header so we know not to handle it in +[NSURLProtocol canInitWithRequest:].
+    [connectionRequest setValue:@"" forHTTPHeaderField:RNCachingURLHeader];
+    NSURLConnection *connection = [NSURLConnection connectionWithRequest:connectionRequest
+                                                                delegate:self];
+    [self setConnection:connection];
 }
 
 - (void)stopLoading {
