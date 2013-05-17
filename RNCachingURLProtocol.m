@@ -94,6 +94,8 @@ static RNCacheListStore *_cacheListStore = nil;
         [_expireTime setObject:@(60 * 60 * 24 * 30) forKey:@"image/jpeg"]; // 30 day
         [_expireTime setObject:@(60 * 60 * 24 * 30) forKey:@"image/jpg"]; // 30 day
         [_expireTime setObject:@(60 * 60 * 24 * 30) forKey:@"image/png"]; // 30 day
+        [_expireTime setObject:@(60 * 60 * 24 * 30) forKey:@"image/gif"]; // 30 day
+        [_expireTime setObject:@(60 * 60 * 24 * 30) forKey:@"application/x-font-woff"]; // 30 day
     }
     return _expireTime;
 }
@@ -264,6 +266,7 @@ static RNCacheListStore *_cacheListStore = nil;
     }
 }
 
+// Only white listed items will be cached
 - (BOOL)isWhiteListed {
     NSString *string = [[[self request] URL] absoluteString];
 
